@@ -30,3 +30,31 @@ def test_rejects_insecure_endpoint(monkeypatch):
     with patch("src.notification_sender.arabic_translation.requests.post") as post:
         assert translate_telegram_report("Hold MSFT") == "Hold MSFT"
         post.assert_not_called()
+
+
+def test_free_translation_without_key(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", "mymemory")
+    response = Mock()
+    response.json.return_value = {
+        "responseStatus": 200,
+        "quotaFinished": False,
+        "responseData": {"translatedText": "شراء NVDA"},
+    }
+    with patch("src.notification_sender.arabic_translation.requests.get", return_value=response) as get:
+        assert translate_telegram_report("Buy NVDA") == "شراء NVDA"
+    assert get.call_args.kwargs["params"]["langpair"] == "en|ar"
+
+
+def test_free_translation_quota_failure_preserves_original(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", "mymemory")
+    response = Mock()
+    response.json.return_value = {"responseStatus": 429, "quotaFinished": True}
+    with patch("src.notification_sender.arabic_translation.requests.get", return_value=response):
+        assert translate_telegram_report("Hold MSFT") == "Hold MSFT"
+
+
+def test_free_translation_chunks_respect_api_limit():
+    from src.notification_sender.arabic_translation import _chunks
+    parts = list(_chunks("Buy " * 300))
+    assert "".join(parts) == "Buy " * 300
+    assert all(len(p.encode("utf-8")) <= 450 for p in parts)
