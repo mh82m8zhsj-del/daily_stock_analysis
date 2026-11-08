@@ -1487,6 +1487,96 @@ class Config:
     _instance: Optional['Config'] = None
     
     @classmethod
+    def _notification_env_values(cls) -> Dict[str, Any]:
+        """Shared notification parsing, independent of model/provider initialization."""
+        return dict(
+            feishu_app_id=os.getenv('FEISHU_APP_ID'),
+            feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
+            wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
+            feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),
+            feishu_webhook_secret=os.getenv('FEISHU_WEBHOOK_SECRET'),
+            feishu_webhook_keyword=os.getenv('FEISHU_WEBHOOK_KEYWORD'),
+            dingtalk_webhook_url=os.getenv('DINGTALK_WEBHOOK_URL'),
+            dingtalk_secret=os.getenv('DINGTALK_SECRET'),
+            feishu_chat_id=os.getenv('FEISHU_CHAT_ID'),
+            feishu_receive_id_type=os.getenv('FEISHU_RECEIVE_ID_TYPE', 'chat_id'),
+            feishu_domain=os.getenv('FEISHU_DOMAIN', 'feishu'),
+            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
+            telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
+            telegram_message_thread_id=os.getenv('TELEGRAM_MESSAGE_THREAD_ID'),
+            email_sender=os.getenv('EMAIL_SENDER'),
+            email_sender_name=os.getenv('EMAIL_SENDER_NAME', 'daily_stock_analysis股票分析助手'),
+            email_password=os.getenv('EMAIL_PASSWORD'),
+            email_receivers=[r.strip() for r in os.getenv('EMAIL_RECEIVERS', '').split(',') if r.strip()],
+            stock_email_groups=cls._parse_stock_email_groups(),
+            pushover_user_key=os.getenv('PUSHOVER_USER_KEY'),
+            pushover_api_token=os.getenv('PUSHOVER_API_TOKEN'),
+            ntfy_url=os.getenv('NTFY_URL'),
+            ntfy_token=os.getenv('NTFY_TOKEN'),
+            gotify_url=os.getenv('GOTIFY_URL'),
+            gotify_token=os.getenv('GOTIFY_TOKEN'),
+            pushplus_token=os.getenv('PUSHPLUS_TOKEN'),
+            pushplus_topic=os.getenv('PUSHPLUS_TOPIC'),
+            serverchan3_sendkey=os.getenv('SERVERCHAN3_SENDKEY'),
+            custom_webhook_urls=[u.strip() for u in os.getenv('CUSTOM_WEBHOOK_URLS', '').split(',') if u.strip()],
+            custom_webhook_bearer_token=os.getenv('CUSTOM_WEBHOOK_BEARER_TOKEN'),
+            custom_webhook_body_template=unescape_compose_sensitive_env_value(
+                'CUSTOM_WEBHOOK_BODY_TEMPLATE',
+                os.getenv('CUSTOM_WEBHOOK_BODY_TEMPLATE') or '',
+            ) or None,
+            webhook_verify_ssl=os.getenv('WEBHOOK_VERIFY_SSL', 'true').lower() == 'true',
+            discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
+            discord_main_channel_id=(
+                os.getenv('DISCORD_MAIN_CHANNEL_ID')
+                or os.getenv('DISCORD_CHANNEL_ID')
+            ),
+            discord_webhook_url=os.getenv('DISCORD_WEBHOOK_URL'),
+            discord_interactions_public_key=os.getenv('DISCORD_INTERACTIONS_PUBLIC_KEY'),
+            slack_webhook_url=os.getenv('SLACK_WEBHOOK_URL'),
+            slack_bot_token=os.getenv('SLACK_BOT_TOKEN'),
+            slack_channel_id=os.getenv('SLACK_CHANNEL_ID'),
+            astrbot_url=os.getenv('ASTRBOT_URL'),
+            astrbot_token=os.getenv('ASTRBOT_TOKEN'),
+            notification_report_channels=parse_notification_route_channels(
+                os.getenv('NOTIFICATION_REPORT_CHANNELS')
+            ),
+            notification_alert_channels=parse_notification_route_channels(
+                os.getenv('NOTIFICATION_ALERT_CHANNELS')
+            ),
+            notification_system_error_channels=parse_notification_route_channels(
+                os.getenv('NOTIFICATION_SYSTEM_ERROR_CHANNELS')
+            ),
+            notification_dedup_ttl_seconds=parse_env_int(
+                os.getenv('NOTIFICATION_DEDUP_TTL_SECONDS'),
+                0,
+                field_name='NOTIFICATION_DEDUP_TTL_SECONDS',
+                minimum=0,
+            ),
+            notification_cooldown_seconds=parse_env_int(
+                os.getenv('NOTIFICATION_COOLDOWN_SECONDS'),
+                0,
+                field_name='NOTIFICATION_COOLDOWN_SECONDS',
+                minimum=0,
+            ),
+            notification_quiet_hours=(os.getenv('NOTIFICATION_QUIET_HOURS') or '').strip(),
+            notification_timezone=(os.getenv('NOTIFICATION_TIMEZONE') or '').strip(),
+            notification_min_severity=(os.getenv('NOTIFICATION_MIN_SEVERITY') or '').strip().lower(),
+            notification_daily_digest_enabled=parse_env_bool(
+                os.getenv('NOTIFICATION_DAILY_DIGEST_ENABLED'),
+                default=False,
+            ),
+        )
+
+    @classmethod
+    def notification_only_from_env(cls) -> 'Config':
+        """Read already-bootstrapped notification env without loading LLMs or a singleton.
+
+        Used by offline preflight. The CLI bootstrap loads the active .env first;
+        full application startup reuses exactly the same notification parser.
+        """
+        return cls(**cls._notification_env_values())
+
+    @classmethod
     def get_instance(cls) -> 'Config':
         """
         获取配置单例实例
@@ -1929,8 +2019,6 @@ class Config:
 
         return cls(
             stock_list=stock_list,
-            feishu_app_id=os.getenv('FEISHU_APP_ID'),
-            feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
             tushare_token=os.getenv('TUSHARE_TOKEN'),
             tickflow_api_key=os.getenv('TICKFLOW_API_KEY'),
@@ -2165,81 +2253,7 @@ class Config:
                 minimum=1,
             ),
             agent_event_alert_rules_json=os.getenv('AGENT_EVENT_ALERT_RULES_JSON', ''),
-            wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
-            feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),
-            feishu_webhook_secret=os.getenv('FEISHU_WEBHOOK_SECRET'),
-            feishu_webhook_keyword=os.getenv('FEISHU_WEBHOOK_KEYWORD'),
-            dingtalk_webhook_url=os.getenv('DINGTALK_WEBHOOK_URL'),
-            dingtalk_secret=os.getenv('DINGTALK_SECRET'),
-            
-
-            feishu_chat_id=os.getenv('FEISHU_CHAT_ID'),
-            feishu_receive_id_type=os.getenv('FEISHU_RECEIVE_ID_TYPE', 'chat_id'),
-            feishu_domain=os.getenv('FEISHU_DOMAIN', 'feishu'),
-            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
-            telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
-            telegram_message_thread_id=os.getenv('TELEGRAM_MESSAGE_THREAD_ID'),
-            email_sender=os.getenv('EMAIL_SENDER'),
-            email_sender_name=os.getenv('EMAIL_SENDER_NAME', 'daily_stock_analysis股票分析助手'),
-            email_password=os.getenv('EMAIL_PASSWORD'),
-            email_receivers=[r.strip() for r in os.getenv('EMAIL_RECEIVERS', '').split(',') if r.strip()],
-            stock_email_groups=cls._parse_stock_email_groups(),
-            pushover_user_key=os.getenv('PUSHOVER_USER_KEY'),
-            pushover_api_token=os.getenv('PUSHOVER_API_TOKEN'),
-            ntfy_url=os.getenv('NTFY_URL'),
-            ntfy_token=os.getenv('NTFY_TOKEN'),
-            gotify_url=os.getenv('GOTIFY_URL'),
-            gotify_token=os.getenv('GOTIFY_TOKEN'),
-            pushplus_token=os.getenv('PUSHPLUS_TOKEN'),
-            pushplus_topic=os.getenv('PUSHPLUS_TOPIC'),
-            serverchan3_sendkey=os.getenv('SERVERCHAN3_SENDKEY'),
-            custom_webhook_urls=[u.strip() for u in os.getenv('CUSTOM_WEBHOOK_URLS', '').split(',') if u.strip()],
-            custom_webhook_bearer_token=os.getenv('CUSTOM_WEBHOOK_BEARER_TOKEN'),
-            custom_webhook_body_template=unescape_compose_sensitive_env_value(
-                'CUSTOM_WEBHOOK_BODY_TEMPLATE',
-                os.getenv('CUSTOM_WEBHOOK_BODY_TEMPLATE') or '',
-            ) or None,
-            webhook_verify_ssl=os.getenv('WEBHOOK_VERIFY_SSL', 'true').lower() == 'true',
-            discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
-            discord_main_channel_id=(
-                os.getenv('DISCORD_MAIN_CHANNEL_ID')
-                or os.getenv('DISCORD_CHANNEL_ID')
-            ),
-            discord_webhook_url=os.getenv('DISCORD_WEBHOOK_URL'),
-            discord_interactions_public_key=os.getenv('DISCORD_INTERACTIONS_PUBLIC_KEY'),
-            slack_webhook_url=os.getenv('SLACK_WEBHOOK_URL'),
-            slack_bot_token=os.getenv('SLACK_BOT_TOKEN'),
-            slack_channel_id=os.getenv('SLACK_CHANNEL_ID'),
-            astrbot_url=os.getenv('ASTRBOT_URL'),
-            astrbot_token=os.getenv('ASTRBOT_TOKEN'),
-            notification_report_channels=parse_notification_route_channels(
-                os.getenv('NOTIFICATION_REPORT_CHANNELS')
-            ),
-            notification_alert_channels=parse_notification_route_channels(
-                os.getenv('NOTIFICATION_ALERT_CHANNELS')
-            ),
-            notification_system_error_channels=parse_notification_route_channels(
-                os.getenv('NOTIFICATION_SYSTEM_ERROR_CHANNELS')
-            ),
-            notification_dedup_ttl_seconds=parse_env_int(
-                os.getenv('NOTIFICATION_DEDUP_TTL_SECONDS'),
-                0,
-                field_name='NOTIFICATION_DEDUP_TTL_SECONDS',
-                minimum=0,
-            ),
-            notification_cooldown_seconds=parse_env_int(
-                os.getenv('NOTIFICATION_COOLDOWN_SECONDS'),
-                0,
-                field_name='NOTIFICATION_COOLDOWN_SECONDS',
-                minimum=0,
-            ),
-            notification_quiet_hours=(os.getenv('NOTIFICATION_QUIET_HOURS') or '').strip(),
-            notification_timezone=(os.getenv('NOTIFICATION_TIMEZONE') or '').strip(),
-            notification_min_severity=(os.getenv('NOTIFICATION_MIN_SEVERITY') or '').strip().lower(),
-            notification_daily_digest_enabled=parse_env_bool(
-                os.getenv('NOTIFICATION_DAILY_DIGEST_ENABLED'),
-                default=False,
-            ),
+            **cls._notification_env_values(),
             single_stock_notify=os.getenv('SINGLE_STOCK_NOTIFY', 'false').lower() == 'true',
             report_type=cls._parse_report_type(os.getenv('REPORT_TYPE', 'simple')),
             report_language=cls._parse_report_language(report_language_raw),

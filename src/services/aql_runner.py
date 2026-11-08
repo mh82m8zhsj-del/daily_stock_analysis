@@ -6,7 +6,7 @@ from pathlib import Path
 
 from data_provider.aql_intraday import fetch_intraday
 from src.services.aql_analysis import (
-    Account, Assessment, DataUnavailable, MODES, WATCHLIST, assess, render_report,
+    Account, DataUnavailable, MODES, WATCHLIST, assess, expire_entry_plans, render_report, session_bounds,
 )
 
 
@@ -16,9 +16,14 @@ def run(args):
     if mode not in MODES:
         print("خطأ في الإعدادات: اختر conservative للوضع المحافظ أو adventurous للوضع المغامر")
         return 2
+    if getattr(args, "check_notify", False):
+        from src.services.aql_notifications import check_settings
+        text, ok = check_settings(args, now)
+        print(text)
+        return 0 if ok else 1
     if any(getattr(args, name, False) for name in (
         "schedule", "serve", "serve_only", "webui", "webui_only", "market_review", "portfolio",
-        "backtest", "etf_rotation", "check_notify",
+        "backtest", "etf_rotation",
     )):
         print("عقل الأسهم يدعم التحليل الفردي للأسهم فقط؛ استخدم التشغيل المجدول الخارجي لتكرار التحليل")
         return 2
@@ -29,42 +34,47 @@ def run(args):
         account = Account.from_dict(payload, now)
     except (DataUnavailable, ValueError, TypeError):
         account = None  # Market analysis remains useful; entry is always blocked.
+    if account is not None and account.positions:
+        symbols = list(dict.fromkeys([*symbols, *account.positions]))
+    if not symbols:
+        print("قائمة الأسهم فارغة؛ حدد أسهمًا صالحة قبل التحليل")
+        return 2
     results = []
     reserved_risk = reserved_cash = 0.0
     failed = False
     for symbol in symbols:
-        if symbol not in WATCHLIST:
+        if symbol not in WATCHLIST and not (account and account.positions and symbol in account.positions):
             results.append(assess(symbol, None, account, now, mode))
+            continue
+        try:
+            _, _, opening, closing = session_bounds(datetime.now(timezone.utc))
+            if not opening <= datetime.now(timezone.utc) < closing:
+                raise DataUnavailable("خارج ساعات الجلسة الأمريكية؛ لا دخول جديد")
+        except DataUnavailable as exc:
+            result = assess(symbol, None, account, now, mode)
+            result.reason = str(exc)
+            results.append(result)
             continue
         try:
             frame = fetch_intraday(symbol)
             result = assess(symbol, frame, account, datetime.now(timezone.utc), mode,
                             reserved_risk=reserved_risk, reserved_cash=reserved_cash)
         except DataUnavailable as exc:
-            result = Assessment(symbol, mode, str(exc))
+            result = assess(symbol, None, account, now, mode)
+            result.reason = str(exc)
             failed = True
         # One report is one basket: reserve both cash and stop risk across symbols.
         if result.plan:
             reserved_risk += result.plan["risk"]
             reserved_cash += result.plan["cost"]
         results.append(result)
-    content = render_report(results, now)
+    published_at = datetime.now(timezone.utc)
+    expire_entry_plans(results, account, published_at)
+    content = render_report(results, published_at)
     print(content)
     folder = Path("reports")
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"aql_{now.strftime('%Y%m%d_%H%M%S_%f')}_{mode}.md").write_text(content, encoding="utf-8")
-    if not getattr(args, "no_notify", False) and not getattr(args, "dry_run", False):
-        from src.notification import NotificationService
-        from src.notification_sender.profile_text import arabic_profile
-        token = arabic_profile.set(True)
-        try:
-            notifier = NotificationService()
-            # Text preserves Arabic shaping and avoids legacy image-only captions.
-            notifier._markdown_to_image_channels = set()
-            if notifier.is_available():
-                if not notifier.send(content, route_type="report"):
-                    print("تعذر إرسال تقرير عقل الأسهم عبر قنوات التنبيه المهيأة")
-                    return 1
-        finally:
-            arabic_profile.reset(token)
-    return 1 if failed else 0
+    from src.services.aql_notifications import dispatch_report
+    delivery_status = dispatch_report(content, args)
+    return 1 if failed or delivery_status else 0

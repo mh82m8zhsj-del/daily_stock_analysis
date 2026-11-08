@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal, DecimalException, ROUND_FLOOR
 import math
+import re
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -42,6 +43,7 @@ class Account:
     open_risk: float
     as_of: datetime
     daily_loss: float = 0.0
+    positions: dict | None = None
 
     @classmethod
     def from_dict(cls, payload, now):
@@ -51,6 +53,7 @@ class Account:
                 positive(payload["equity"]), positive(payload["start_equity"]),
                 positive(payload["cash"], zero=True), positive(payload["open_risk"], zero=True),
                 stamp, positive(payload["daily_loss"], zero=True),
+                parse_positions(payload.get("positions")),
             )
             account.validate(now)
             return account
@@ -82,6 +85,28 @@ class Assessment:
     reason: str = "لا توجد إشارة دخول مؤكدة"
     metrics: dict = field(default_factory=dict)
     plan: dict | None = None
+    category: str = "unclassified"
+    position: dict | None = None
+
+
+def parse_positions(payload):
+    """None means holdings are unknown; only an explicit {} confirms a flat account."""
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise DataUnavailable("قائمة المراكز المملوكة غير صالحة")
+    positions = {}
+    for symbol, value in payload.items():
+        if not isinstance(symbol, str) or not re.fullmatch(r"[A-Z][A-Z0-9]{0,9}(?:[.-][AB])?", symbol):
+            raise DataUnavailable("رمز مركز مملوك غير صالح؛ استخدم الرموز الأمريكية بأحرف كبيرة")
+        if not isinstance(value, dict):
+            raise DataUnavailable("بيانات المركز المملوك غير مكتملة")
+        positions[symbol] = {
+            "shares": positive(value.get("shares")),
+            "average_cost": positive(value.get("average_cost")),
+            "stop": positive(value["stop"]) if value.get("stop") is not None else None,
+        }
+    return positions
 
 
 def session_bounds(now):
@@ -119,7 +144,7 @@ def indicators(frame, now):
         raise DataUnavailable("يلزم سجل مكتمل لحساب الدعم والمقاومة")
     try:
         bars = bars.astype(float)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise DataUnavailable("قيم الشموع غير صالحة") from exc
     if (not all(math.isfinite(v) and v > 0 for v in bars.to_numpy().ravel())
             or (bars.high < bars[["open", "close", "low"]].max(axis=1)).any()
@@ -170,7 +195,10 @@ def assess(symbol, frame, account, now, mode="conservative", *, reserved_risk=0.
     result = Assessment(symbol, mode)
     if mode not in MODES:
         raise ValueError("وضع التحليل غير معروف")
-    if symbol not in WATCHLIST:
+    if account is not None and account.positions is not None:
+        result.position = account.positions.get(symbol)
+        result.category = "owned" if result.position else "candidate"
+    if symbol not in WATCHLIST and result.category != "owned":
         result.reason = "الرمز خارج قائمة ناسداك للتكنولوجيا والذكاء الاصطناعي المعتمدة"
         return result
     try:
@@ -178,6 +206,21 @@ def assess(symbol, frame, account, now, mode="conservative", *, reserved_risk=0.
         if account is None:
             raise DataUnavailable("لقطة الحساب غير متاحة؛ لا يمكن حساب حجم الصفقة والمخاطرة")
         account.validate(now)
+        if result.category == "owned":
+            stop = result.position.get("stop")
+            if stop is None:
+                result.reason = "بيانات إدارة المركز غير كافية: لم يُحدد وقف حالي؛ راجعه يدويًا دون إضافة أسهم"
+            elif result.metrics["close"] <= stop:
+                result.reason = "تنبيه إدارة مركز: آخر إغلاق عند وقفك المسجل أو دونه؛ راجع قرار الخروج دون إضافة أسهم"
+            elif result.metrics["close"] < result.metrics["vwap"]:
+                result.reason = "مراجعة حماية المركز: الإغلاق دون متوسط السعر المرجح بالحجم؛ لا إضافة أسهم"
+            else:
+                result.reason = "متابعة المركز المملوك وفق وقفه المسجل؛ لا توصية بدخول أو تعزيز جديد"
+            return result
+        if account.positions is None:
+            raise DataUnavailable("بيانات المحفظة غير كافية: قائمة المراكز غير متاحة؛ يلزم positions أو {} لتأكيد عدم امتلاك أسهم")
+        if any(position.get("stop") is None for position in account.positions.values()):
+            raise DataUnavailable("بيانات مخاطرة المحفظة غير كافية: يوجد مركز مملوك دون وقف مسجل؛ لا دخول جديد")
         reserved_risk = positive(reserved_risk, zero=True)
         reserved_cash = positive(reserved_cash, zero=True)
         metrics = result.metrics
@@ -209,9 +252,29 @@ def assess(symbol, frame, account, now, mode="conservative", *, reserved_risk=0.
             "shares": shares, "risk": float(distance * shares), "cost": float(entry * shares), "rr": 2.0,
         }
         result.reason = "إشارة دخول افتراضية مؤكدة بشمعة 15 دقيقة مغلقة"
-    except DataUnavailable as exc:
-        result.reason = str(exc)
+    except (DataUnavailable, DecimalException) as exc:
+        result.reason = str(exc) if isinstance(exc, DataUnavailable) else "الأسعار غير صالحة لحساب خطة دخول آمنة"
     return result
+
+
+def expire_entry_plans(results, account, now):
+    """Recheck at publication time: slow multi-symbol fetches must not publish old entries."""
+    for result in results:
+        if result.plan is None:
+            continue
+        try:
+            if account is None:
+                raise DataUnavailable("بيانات الحساب غير كافية عند إصدار التقرير")
+            account.validate(now)
+            _, _, opening, closing = session_bounds(now)
+            if not opening <= now < closing:
+                raise DataUnavailable("السوق مغلق عند إصدار التقرير؛ أُلغيت إشارة الدخول اللحظية")
+            confirmed = datetime.fromisoformat(result.metrics["confirmed_at"])
+            if now >= confirmed + timedelta(minutes=15):
+                raise DataUnavailable("بيانات التأكيد متأخرة عند إصدار التقرير؛ أُلغيت إشارة الدخول")
+        except DataUnavailable as exc:
+            result.plan = None
+            result.reason = str(exc)
 
 
 def render_report(results, now):
@@ -219,19 +282,35 @@ def render_report(results, now):
              "ناسداك • التكنولوجيا والذكاء الاصطناعي • تحليل فقط دون تنفيذ صفقات",
              "المخاطرة القصوى للصفقة: 2% • حد الخسارة اليومية: 2% • أدنى عائد إلى مخاطرة: `2:1`",
              "الأسعار بالدولار الأمريكي. الأهداف حسابية وليست توقعًا مضمونًا. الانزلاق والفجوات قد تتجاوز وقف الخسارة.", ""]
-    for result in results:
-        lines += [f"## {result.symbol} — الوضع {MODE_NAMES[result.mode]}", result.reason]
-        m = result.metrics
-        if m:
-            lines += [f"متوسط السعر المرجح بالحجم: {m['vwap']:.2f} | الحجم النسبي: {m['rvol']:.2f}",
-                      f"زخم ساعة: {m['momentum']:.2%} | الدعم: {m['support']:.2f} | المقاومة: {m['resistance']:.2f}",
-                      f"إغلاق شمعة التأكيد: `{m['confirmed_at']}`"]
-        if result.plan:
-            p = result.plan
-            lines += [f"الدخول: {p['entry']:.2f} | وقف الخسارة: {p['stop']:.2f}",
-                      f"الهدف الأول: {p['target_1']:.2f} (`2:1`) | الهدف الثاني: {p['target_2']:.2f} (`3:1`)",
-                      f"حجم الصفقة: {p['shares']} سهم | القيمة: {p['cost']:.2f} | الخسارة المخططة القصوى: {p['risk']:.2f}"]
-        else:
-            lines.append("قرار الدخول: ممنوع. لا تُعرض مستويات دخول أو أهداف أو حجم صفقة غير قابل للتحقق.")
-        lines.append("")
+    groups = (
+        ("owned", "إدارة المراكز المملوكة — لا دخول جديد"),
+        ("candidate", "الأسهم المرشحة — فرص دخول مشروطة"),
+        ("unclassified", "أسهم تحتاج بيانات المحفظة قبل التصنيف"),
+    )
+    for category, title in groups:
+        selected = [result for result in results if result.category == category]
+        if not selected:
+            continue
+        lines += [f"## {title}", ""]
+        for result in selected:
+            lines += [f"### {result.symbol} — الوضع {MODE_NAMES[result.mode]}", result.reason]
+            if result.position:
+                position = result.position
+                stop_text = f"{position['stop']:.2f}" if position.get("stop") is not None else "غير متاح"
+                lines += [f"الكمية المملوكة: {position['shares']:g} سهم | متوسط التكلفة المسجل: {position['average_cost']:.2f} | الوقف المسجل: {stop_text}"]
+            m = result.metrics
+            if m:
+                lines += [f"متوسط السعر المرجح بالحجم: {m['vwap']:.2f} | الحجم النسبي: {m['rvol']:.2f}",
+                          f"زخم ساعة: {m['momentum']:.2%} | الدعم: {m['support']:.2f} | المقاومة: {m['resistance']:.2f}",
+                          f"إغلاق شمعة التأكيد: `{m['confirmed_at']}`"]
+            if result.plan:
+                p = result.plan
+                lines += [f"الدخول: {p['entry']:.2f} | وقف الخسارة: {p['stop']:.2f}",
+                          f"الهدف الأول: {p['target_1']:.2f} (`2:1`) | الهدف الثاني: {p['target_2']:.2f} (`3:1`)",
+                          f"حجم الصفقة: {p['shares']} سهم | القيمة: {p['cost']:.2f} | الخسارة المخططة القصوى: {p['risk']:.2f}"]
+            elif result.category == "owned":
+                lines.append("قرار إضافة أسهم: ممنوع في قسم إدارة المراكز؛ لا تُعامل الحيازة كمرشح شراء جديد.")
+            else:
+                lines.append("قرار الدخول: ممنوع. لا تُعرض مستويات دخول أو أهداف أو حجم صفقة غير قابل للتحقق.")
+            lines.append("")
     return "\n".join(lines)

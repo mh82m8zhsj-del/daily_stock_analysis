@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [新功能] Separate Aql Alashum owned-position management from candidate entries, require explicit holdings knowledge before new plans, recheck publication freshness, and add Arabic secret-safe notification preflight with explicit delivery outcomes.
+
 - [修复] Classify Aql Alashum CLI/Actions-only environment keys as hidden Web settings and protect the private account snapshot with sensitive metadata and server-side masking; preserve masked writes and explicit raw backups.
 
 - [新功能] Add opt-in عقل الأسهم Arabic read-only NASDAQ technology/AI profile: closed 15-minute breakout, session VWAP, same-slot RVOL, momentum, conservative/adventurous modes, verified account sizing and shared 2% daily risk cap; existing scheduled workflow remains unchanged except optional profile environment bindings. See `docs/aql-alashum.md`.
