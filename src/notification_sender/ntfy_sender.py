@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from src.notification_sender.profile_text import profile_text
-
 import logging
 from datetime import datetime
 from typing import Optional, Tuple
@@ -83,7 +81,7 @@ class NtfySender:
 
         if title is None:
             date_str = datetime.now().strftime("%Y-%m-%d")
-            title = profile_text(f"📈 股票分析报告 - {date_str}")
+            title = f"📈 股票分析报告 - {date_str}"
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
 
         headers = {

@@ -5,8 +5,6 @@ Discord 发送提醒服务
 职责：
 1. 通过 webhook 或 Discord bot API 发送 Discord 消息
 """
-from src.notification_sender.profile_text import profile_text
-
 import logging
 import time
 from typing import Optional
@@ -164,7 +162,7 @@ class DiscordSender:
         """
         payload = {
             'content': content,
-            'username': profile_text('A股分析机器人'),
+            'username': 'A股分析机器人',
             'avatar_url': 'https://picsum.photos/200'
         }
 

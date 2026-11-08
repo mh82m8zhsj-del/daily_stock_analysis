@@ -318,8 +318,6 @@ def parse_arguments() -> argparse.Namespace:
         '''
     )
 
-    parser.add_argument('--aql', action='store_true', help='تشغيل عقل الأسهم للتحليل فقط دون تنفيذ صفقات')
-
     parser.add_argument(
         '--debug',
         action='store_true',
@@ -1687,9 +1685,6 @@ def main() -> int:
     """
     # 解析命令行参数
     args = parse_arguments()
-    if getattr(args, "aql", False) or os.getenv("AQL_ENABLED", "false").strip().lower() == "true":
-        from src.services.aql_runner import run
-        return run(args)
 
     # 在配置加载前先初始化 bootstrap 日志，确保早期失败也能落盘
     try:

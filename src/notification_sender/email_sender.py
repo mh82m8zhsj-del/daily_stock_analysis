@@ -5,8 +5,6 @@ Email 发送提醒服务
 职责：
 1. 通过 SMTP 发送 Email 消息
 """
-from src.notification_sender.profile_text import profile_text
-
 import logging
 from typing import Optional, List
 from datetime import datetime
@@ -61,7 +59,7 @@ class EmailSender:
         """
         self._email_config = {
             'sender': config.email_sender,
-            'sender_name': profile_text(getattr(config, 'email_sender_name', 'daily_stock_analysis股票分析助手')),
+            'sender_name': getattr(config, 'email_sender_name', 'daily_stock_analysis股票分析助手'),
             'password': config.email_password,
             'receivers': config.email_receivers or ([config.email_sender] if config.email_sender else []),
         }
@@ -165,7 +163,7 @@ class EmailSender:
             # 生成主题
             if subject is None:
                 date_str = datetime.now().strftime('%Y-%m-%d')
-                subject = profile_text(f"📈 股票智能分析报告 - {date_str}")
+                subject = f"📈 股票智能分析报告 - {date_str}"
 
             sanitized_content = strip_hidden_markdown_metadata(content).strip()
             
@@ -239,7 +237,7 @@ class EmailSender:
         server: Optional[smtplib.SMTP] = None
         try:
             date_str = datetime.now().strftime('%Y-%m-%d')
-            subject = profile_text(f"📈 股票智能分析报告 - {date_str}")
+            subject = f"📈 股票智能分析报告 - {date_str}"
             msg = MIMEMultipart('related')
             msg['Subject'] = Header(subject, 'utf-8')
             msg['From'] = self._format_sender_address(sender)

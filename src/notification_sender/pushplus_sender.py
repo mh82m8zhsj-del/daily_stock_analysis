@@ -5,8 +5,6 @@ PushPlus 发送提醒服务
 职责：
 1. 通过 PushPlus API 发送 PushPlus 消息
 """
-from src.notification_sender.profile_text import profile_text
-
 import logging
 import time
 from typing import Optional
@@ -72,7 +70,7 @@ class PushplusSender:
 
         if title is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
-            title = profile_text(f"📈 股票分析报告 - {date_str}")
+            title = f"📈 股票分析报告 - {date_str}"
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
 
         try:
