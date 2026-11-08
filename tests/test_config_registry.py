@@ -585,6 +585,28 @@ class TestEnvExampleWebSettingsCoverage(unittest.TestCase):
         )
 
 
+class TestAqlCliSettings(unittest.TestCase):
+    """CLI-only profile controls must not become editable Web settings."""
+
+    def test_aql_profile_is_intentionally_hidden_from_web_settings(self):
+        keys = {"AQL_ENABLED", "AQL_MODE", "AQL_STOCK_LIST", "AQL_ACCOUNT_JSON"}
+        self.assertTrue(keys.issubset(WEB_SETTINGS_HIDDEN_FROM_UI))
+        fields = {
+            field["key"]
+            for category in build_schema_response()["categories"]
+            for field in category["fields"]
+        }
+        self.assertTrue(keys.isdisjoint(fields))
+
+    def test_account_snapshot_has_sensitive_fallback_metadata(self):
+        for key in ("AQL_ACCOUNT_JSON", "aql_account_json"):
+            with self.subTest(key=key):
+                field = get_field_definition(key)
+                self.assertTrue(field["is_sensitive"])
+                self.assertEqual(field["ui_control"], "password")
+        self.assertFalse(get_field_definition("AQL_STOCK_LIST")["is_sensitive"])
+
+
 class TestSettingsHelpContract(unittest.TestCase):
     """Help keys must map to registry metadata or be editor-only.
 

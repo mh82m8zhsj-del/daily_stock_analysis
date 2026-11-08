@@ -45,4 +45,6 @@ The new optional profile enters through `main.py` before legacy generation/confi
 
 ## Rollback
 
+Configuration integration follow-up: the four `AQL_*` keys are explicitly classified in `WEB_SETTINGS_HIDDEN_FROM_UI`, following the existing CLI-only settings convention. `AQL_ACCOUNT_JSON` receives sensitive fallback metadata and server-side masking for schema-free configuration reads; masked writes retain the saved snapshot. Explicit raw `.env` backups/imports preserve the original values, as for other private configuration. Registry coverage, service/API visibility, masking, writes and backups are covered by regression tests. The original omission caused the PR's first CI shard 3/3 failure and is a feature regression, separate from the previously observed baseline streaming timeout.
+
 Set `AQL_ENABLED=false` and omit `--aql` to restore the original execution path immediately. Revert this feature commit for a code rollback. No database migration, secret rewrite, or broker-account change is involved.

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] Classify Aql Alashum CLI/Actions-only environment keys as hidden Web settings and protect the private account snapshot with sensitive metadata and server-side masking; preserve masked writes and explicit raw backups.
+
 - [新功能] Add opt-in عقل الأسهم Arabic read-only NASDAQ technology/AI profile: closed 15-minute breakout, session VWAP, same-slot RVOL, momentum, conservative/adventurous modes, verified account sizing and shared 2% daily risk cap; existing scheduled workflow remains unchanged except optional profile environment bindings. See `docs/aql-alashum.md`.
 
 - [修复] 依赖锁定 `akshare<1.20.0`，避免上游目录与 HTTP 层重构导致 CI 与桌面打包失败；Python 3.10 新装限制 `litellm<1.98.0`，修复 `NotRequired` 导入错误

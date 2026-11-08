@@ -116,6 +116,17 @@ class SystemConfigApiTestCase(unittest.TestCase):
         self.assertEqual(item_map["GEMINI_API_KEY"]["value"], "secret-key-value")
         self.assertFalse(item_map["GEMINI_API_KEY"]["is_masked"])
 
+    def test_aql_account_is_hidden_from_settings_and_masked_without_schema(self) -> None:
+        snapshot = '{"equity":12345,"cash":6789}'
+        self._rewrite_env("AQL_ENABLED=false", f"AQL_ACCOUNT_JSON={snapshot}")
+        visible = system_config.get_system_config(include_schema=True, service=self.service).model_dump(by_alias=True)
+        self.assertFalse(any(item["key"].startswith("AQL_") for item in visible["items"]))
+        raw = system_config.get_system_config(include_schema=False, service=self.service).model_dump(by_alias=True)
+        account = next(item for item in raw["items"] if item["key"] == "AQL_ACCOUNT_JSON")
+        self.assertEqual(account["value"], raw["mask_token"])
+        self.assertTrue(account["is_masked"])
+        self.assertNotIn(snapshot, str(raw))
+
     def test_get_config_masks_llm_usage_hmac_secret(self) -> None:
         self._rewrite_env(
             "STOCK_LIST=600519,000001",

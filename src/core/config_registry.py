@@ -86,6 +86,12 @@ WEB_SETTINGS_HIDDEN_FROM_UI = {
     # CLI-only schedule-mode behavior (python main.py --schedule); the WebUI
     # runtime scheduler does not consult the startup dedup gate.
     "SCHEDULE_STARTUP_DEDUP",
+    # Aql Alashum is a CLI/Actions-only profile; Web analysis does not consume
+    # these controls. The short-lived account snapshot is private operator data.
+    "AQL_ENABLED",
+    "AQL_MODE",
+    "AQL_STOCK_LIST",
+    "AQL_ACCOUNT_JSON",
 }
 
 _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -5179,6 +5185,8 @@ def build_schema_response() -> Dict[str, Any]:
 
 
 def _is_sensitive_key(key: str) -> bool:
+    if key == "AQL_ACCOUNT_JSON":
+        return True
     markers = ("KEY", "TOKEN", "SECRET", "PASSWORD")
     return any(marker in key for marker in markers)
 

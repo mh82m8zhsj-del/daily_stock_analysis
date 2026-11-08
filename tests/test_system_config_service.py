@@ -694,6 +694,53 @@ class SystemConfigServiceTestCase(unittest.TestCase):
         self.assertNotIn("saved-secret-token", rendered)
         self.assertIn("[REDACTED]", rendered)
 
+    def test_aql_cli_settings_stay_out_of_web_schema_for_saved_and_runtime_values(self) -> None:
+        settings = {
+            "AQL_ENABLED": "false",
+            "AQL_MODE": "conservative",
+            "AQL_STOCK_LIST": "NVDA,AMD",
+            "AQL_ACCOUNT_JSON": '{"equity":12345,"cash":6789}',
+        }
+        for saved in (False, True):
+            with self.subTest(saved=saved), patch.dict(os.environ, settings):
+                self._rewrite_env(*(f"{key}={value}" for key, value in settings.items()) if saved else [])
+                payload = self.service.get_config(include_schema=True)
+                keys = {item["key"] for item in payload["items"]}
+                self.assertTrue(settings.keys().isdisjoint(keys))
+                schema = self.service.get_schema()
+                fields = {field["key"] for category in schema["categories"] for field in category["fields"]}
+                self.assertTrue(settings.keys().isdisjoint(fields))
+                self.assertNotIn(settings["AQL_ACCOUNT_JSON"], json.dumps(payload))
+
+    def test_raw_config_masks_aql_account_snapshot_and_masked_update_preserves_it(self) -> None:
+        snapshot = '{"equity":12345,"cash":6789}'
+        self._rewrite_env("STOCK_LIST=NVDA", f"AQL_ACCOUNT_JSON={snapshot}")
+        payload = self.service.get_config(include_schema=False, mask_token="[private]")
+        items = {item["key"]: item for item in payload["items"]}
+        self.assertEqual(items["AQL_ACCOUNT_JSON"]["value"], "[private]")
+        self.assertTrue(items["AQL_ACCOUNT_JSON"]["is_masked"])
+        self.assertNotIn(snapshot, json.dumps(payload))
+        result = self.service.update(
+            config_version=payload["config_version"],
+            items=[{"key": "AQL_ACCOUNT_JSON", "value": "[private]"}],
+            mask_token="[private]",
+            reload_now=False,
+        )
+        self.assertEqual(result["skipped_masked_count"], 1)
+        self.assertEqual(self.manager.read_config_map()["AQL_ACCOUNT_JSON"], snapshot)
+
+    def test_aql_settings_survive_explicit_raw_backup_and_import(self) -> None:
+        snapshot = '{"equity":12345,"cash":6789}'
+        content = f"AQL_ENABLED=false\nAQL_MODE=adventurous\nAQL_STOCK_LIST=NVDA\nAQL_ACCOUNT_JSON={snapshot}\n"
+        self.service.import_desktop_env(
+            config_version=self.manager.get_config_version(), content=content, reload_now=False,
+        )
+        for export in (self.service.export_env, self.service.export_desktop_env):
+            with self.subTest(export=export.__name__):
+                self.assertIn(content, export()["content"])
+        self.assertEqual(self.manager.read_config_map()["AQL_ACCOUNT_JSON"], snapshot)
+        self.assertFalse(any(item["key"].startswith("AQL_") for item in self.service.get_config()["items"]))
+
     def test_get_config_masks_llm_usage_hmac_secret(self) -> None:
         self._rewrite_env(
             "STOCK_LIST=600519,000001",
