@@ -207,7 +207,6 @@ class SystemConfigService:
         }
     }
     _SERVER_MASKED_CONFIG_KEYS: Set[str] = {
-        "AQL_ACCOUNT_JSON",
         "LLM_HERMES_API_KEY",
         "LLM_HERMES_API_KEYS",
         "LLM_HERMES_EXTRA_HEADERS",
