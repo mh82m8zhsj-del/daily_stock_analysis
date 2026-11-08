@@ -5,8 +5,6 @@ Pushover 发送提醒服务
 职责：
 1. 通过 Pushover API 发送 Pushover 消息
 """
-from src.notification_sender.profile_text import profile_text
-
 import logging
 from typing import Optional
 from datetime import datetime
@@ -82,7 +80,7 @@ class PushoverSender:
         # 处理消息标题
         if title is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
-            title = profile_text(f"📈 股票分析报告 - {date_str}")
+            title = f"📈 股票分析报告 - {date_str}"
         
         # Pushover 消息限制 1024 字符
         max_length = 1024
