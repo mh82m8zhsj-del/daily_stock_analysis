@@ -5,6 +5,8 @@
 职责：
 1. 发送自定义 Webhook 消息
 """
+from src.notification_sender.profile_text import profile_text
+
 import logging
 import json
 import time
@@ -116,7 +118,7 @@ class CustomWebhookSender:
             try:
                 if self._is_discord_webhook(url):
                     files = {"file": ("report.png", image_bytes, "image/png")}
-                    data = {"content": "📈 股票智能分析报告"}
+                    data = {"content": profile_text("📈 股票智能分析报告")}
                     headers = {"User-Agent": "StockAnalysis/1.0"}
                     if self._custom_webhook_bearer_token:
                         headers["Authorization"] = (
@@ -288,7 +290,7 @@ class CustomWebhookSender:
             return {
                 "msgtype": "markdown",
                 "markdown": {
-                    "title": "股票分析报告",
+                    "title": profile_text("股票分析报告"),
                     "text": sanitized_content
                 }
             }
@@ -315,7 +317,7 @@ class CustomWebhookSender:
         # Bark (iOS 推送)
         if 'api.day.app' in url_lower:
             return {
-                "title": "股票分析报告",
+                "title": profile_text("股票分析报告"),
                 "body": sanitized_content[:4000],  # Bark 限制
                 "group": "stock"
             }
@@ -335,7 +337,7 @@ class CustomWebhookSender:
         if not template:
             return None
 
-        title = "股票分析报告"
+        title = profile_text("股票分析报告")
         variables = {
             "title": title,
             "title_json": json.dumps(title, ensure_ascii=False),
@@ -376,7 +378,7 @@ class CustomWebhookSender:
             payload = {
                 "msgtype": "markdown",
                 "markdown": {
-                    "title": "股票分析报告",
+                    "title": profile_text("股票分析报告"),
                     "text": chunk + marker,
                 },
             }

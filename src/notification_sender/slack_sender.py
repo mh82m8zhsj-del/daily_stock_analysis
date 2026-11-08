@@ -6,6 +6,8 @@ Slack 发送提醒服务
 1. 通过 Slack Bot API 或 Incoming Webhook 发送 Slack 消息
    （同时配置时优先使用 Bot API，确保文本与图片发送到同一频道）
 """
+from src.notification_sender.profile_text import profile_text
+
 import logging
 import json
 from typing import Optional
@@ -222,7 +224,7 @@ class SlackSender:
                     'https://slack.com/api/files.completeUploadExternal',
                     headers={**headers, 'Content-Type': 'application/json'},
                     json={
-                        'files': [{'id': file_id, 'title': '股票分析报告'}],
+                        'files': [{'id': file_id, 'title': profile_text('股票分析报告')}],
                         'channel_id': self._slack_channel_id,
                     },
                     timeout=30,

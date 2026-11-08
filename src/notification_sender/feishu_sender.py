@@ -10,6 +10,8 @@ import base64
 import hashlib
 import hmac
 import json
+from src.notification_sender.profile_text import profile_text
+
 import logging
 import os
 import tempfile
@@ -139,7 +141,7 @@ class FeishuSender:
         return {
             "config": {"wide_screen_mode": True},
             "header": {
-                "title": {"tag": "plain_text", "content": "股票智能分析报告"},
+                "title": {"tag": "plain_text", "content": profile_text("股票智能分析报告")},
             },
             "elements": [
                 {

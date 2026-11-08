@@ -214,9 +214,13 @@ def markdown_to_html_document(markdown_text: str) -> str:
             }
         """
 
+    from src.notification_sender.profile_text import arabic_profile
+    html_attributes = ' lang="ar" dir="rtl"' if arabic_profile.get() else ""
+    if arabic_profile.get():
+        css_style += '\ncode { direction: ltr; unicode-bidi: isolate; display: inline-block; }'
     return f"""
         <!DOCTYPE html>
-        <html>
+        <html{html_attributes}>
         <head>
             <meta charset="utf-8">
             <style>
