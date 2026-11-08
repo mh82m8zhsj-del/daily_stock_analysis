@@ -13,6 +13,7 @@ import time
 import re
 
 from src.config import Config
+from src.notification_sender.arabic_translation import translate_telegram_report
 from src.formatters import _custom_unit_to_index, strip_hidden_markdown_metadata, utf16_len
 
 
@@ -86,6 +87,7 @@ class TelegramSender:
             max_length = 4096
 
             sanitized_content = strip_hidden_markdown_metadata(content).strip()
+            sanitized_content = translate_telegram_report(sanitized_content)
             if not sanitized_content:
                 logger.warning("Telegram 消息内容为空，跳过推送")
                 return False
