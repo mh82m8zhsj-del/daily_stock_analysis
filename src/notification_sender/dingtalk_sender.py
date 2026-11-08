@@ -5,6 +5,8 @@ import hashlib
 import base64
 import urllib.parse
 import requests
+from src.notification_sender.profile_text import profile_text
+
 import logging
 from typing import Optional
 
@@ -52,7 +54,7 @@ class DingtalkSender:
         for index, chunk in enumerate(chunks):
             text = f"### {safe_title}\n\n{chunk}" if index == 0 and safe_title else chunk
             
-            display_title = safe_title or "通知 (Notification)"
+            display_title = safe_title or profile_text("通知 (Notification)")
             if len(chunks) > 1:
                 display_title = f"{display_title} ({index + 1}/{len(chunks)})"
             

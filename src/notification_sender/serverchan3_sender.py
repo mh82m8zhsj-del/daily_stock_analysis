@@ -5,6 +5,8 @@ Server酱3 发送提醒服务
 职责：
 1. 通过 Server酱3 API 发送 Server酱3 消息
 """
+from src.notification_sender.profile_text import profile_text
+
 import logging
 from typing import Optional
 import requests
@@ -67,7 +69,7 @@ class Serverchan3Sender:
         # 处理消息标题
         if title is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
-            title = f"📈 股票分析报告 - {date_str}"
+            title = profile_text(f"📈 股票分析报告 - {date_str}")
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
 
         try:
