@@ -338,3 +338,9 @@ Secret 适合 token、password、webhook URL 等敏感项；Variable 适合 `WEC
 عند `TELEGRAM_TRANSLATE_URL=mymemory` يُقسَّم التقرير إلى مقاطع تحافظ على النص والترميز، ثم تُترجم قبل الإرسال. فشل الترجمة أو إرجاع نص فارغ يبقي التقرير الأصلي للإرسال ولا يُسقط الرسالة. هذا لا يتجاوز إعدادات القناة أو منع التكرار وساعات الهدوء. يلزم وصول `TELEGRAM_BOT_TOKEN` و`TELEGRAM_CHAT_ID` إلى خطوة التحليل؛ لا تُعرض قيمهما في السجلات أو المحادثة.
 
 إذا لم يصل التنبيه، افحص سجل تشغيل التحليل: غياب قناة صالحة يختلف عن محتوى ترجمة فارغ، وكلاهما يختلف عن رفض Telegram للطلب. لم يُرسل اختبار فعلي ضمن الاختبارات الآلية؛ تستخدم بدائل محلية للشبكة والمرسل.
+
+## English Telegram alerts
+
+The daily GitHub Actions job uses `REPORT_LANGUAGE=en` and an explicitly empty `TELEGRAM_TRANSLATE_URL`. Telegram therefore sends the original English report without contacting MyMemory, Google Translate, or LibreTranslate. The optional translation feature remains available for separately configured deployments.
+
+For local deployments, set `REPORT_LANGUAGE=en` and leave `TELEGRAM_TRANSLATE_URL` empty as well. This changes notification language only; stock analysis, trading rules, destinations, and scheduling remain unchanged.

@@ -432,8 +432,8 @@ jobs:
           # ==========================================
           REPORT_TYPE: ${{ vars.REPORT_TYPE || secrets.REPORT_TYPE || 'simple' }}
           REPORT_LANGUAGE: 'en'
-          # Optional external LibreTranslate-compatible Arabic translation for Telegram only
-          TELEGRAM_TRANSLATE_URL: 'mymemory'
+          # Deliver the original English report without external translation.
+          TELEGRAM_TRANSLATE_URL: ''
           TELEGRAM_TRANSLATE_API_KEY: ${{ secrets.TELEGRAM_TRANSLATE_API_KEY || '' }}
           REPORT_SHOW_LLM_MODEL: ${{ vars.REPORT_SHOW_LLM_MODEL || secrets.REPORT_SHOW_LLM_MODEL || 'true' }}
           SINGLE_STOCK_NOTIFY: ${{ vars.SINGLE_STOCK_NOTIFY || secrets.SINGLE_STOCK_NOTIFY || 'false' }}
