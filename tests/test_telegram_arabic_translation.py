@@ -122,3 +122,35 @@ def test_malformed_service_response_reaches_sender_as_original(monkeypatch):
             patch.object(sender, "_send_telegram_message", return_value=True) as send:
         assert sender.send_to_telegram("Hold MSFT")
     assert send.call_args.args[2] == "Hold MSFT"
+
+
+def test_free_translation_quota_tries_google_arabic_fallback(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", "mymemory")
+    quota = Mock()
+    quota.json.return_value = {"responseStatus": 429, "quotaFinished": True}
+    google = Mock()
+    google.json.return_value = [[["شراء ", "Buy "], ["NVDA", "NVDA"]]]
+
+    def fake_get(url, **kwargs):
+        if "mymemory.translated.net" in url:
+            return quota
+        assert url == "https://translate.googleapis.com/translate_a/single"
+        assert kwargs["params"]["tl"] == "ar"
+        return google
+
+    with patch("src.notification_sender.arabic_translation.requests.get", side_effect=fake_get):
+        assert translate_telegram_report("Buy NVDA") == "شراء NVDA"
+
+
+def test_google_fallback_unavailable_does_not_drop_alert(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", "mymemory")
+    quota = Mock()
+    quota.json.return_value = {"responseStatus": 429, "quotaFinished": True}
+
+    def fake_get(url, **kwargs):
+        if "mymemory.translated.net" in url:
+            return quota
+        raise __import__("requests").Timeout()
+
+    with patch("src.notification_sender.arabic_translation.requests.get", side_effect=fake_get):
+        assert translate_telegram_report("Hold MSFT") == "Hold MSFT"
