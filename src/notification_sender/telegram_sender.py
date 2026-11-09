@@ -87,7 +87,11 @@ class TelegramSender:
             max_length = 4096
 
             sanitized_content = strip_hidden_markdown_metadata(content).strip()
-            sanitized_content = translate_telegram_report(sanitized_content)
+            translated_content = translate_telegram_report(sanitized_content)
+            if isinstance(translated_content, str) and translated_content.strip():
+                sanitized_content = translated_content
+            elif sanitized_content:
+                logger.warning("Telegram translation was empty; delivering original report")
             if not sanitized_content:
                 logger.warning("Telegram 消息内容为空，跳过推送")
                 return False

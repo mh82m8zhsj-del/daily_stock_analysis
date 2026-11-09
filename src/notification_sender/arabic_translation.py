@@ -33,7 +33,10 @@ def translate_telegram_report(text: str) -> str:
     try:
         response = requests.post(endpoint, json=payload, timeout=25)
         response.raise_for_status()
-        translated = response.json().get("translatedText")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Invalid translation response")
+        translated = data.get("translatedText")
         if isinstance(translated, str) and translated.strip():
             return translated
         logger.warning("Translation service returned no translatedText; delivering original")
@@ -45,7 +48,7 @@ def translate_telegram_report(text: str) -> str:
 def _chunks(text: str, max_bytes: int = 450):
     """Split at whitespace, with a safe fallback for very long tokens."""
     current = ""
-    for token in re.findall(r"\\S+|\\s+", text):
+    for token in re.findall(r"\S+|\s+", text):
         if len((current + token).encode("utf-8")) <= max_bytes:
             current += token
             continue
@@ -78,13 +81,19 @@ def _translate_with_mymemory(text: str) -> str:
             )
             response.raise_for_status()
             data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("Invalid translation response")
             if data.get("responseStatus") != 200 or data.get("quotaFinished"):
                 raise ValueError("Translation API limit or error")
-            translated = data.get("responseData", {}).get("translatedText")
+            response_data = data.get("responseData")
+            if not isinstance(response_data, dict):
+                raise ValueError("Invalid translation response data")
+            translated = response_data.get("translatedText")
             if not isinstance(translated, str) or not translated.strip():
                 raise ValueError("Empty translation")
             translated_parts.append(translated)
-        return "".join(translated_parts)
+        translated_text = "".join(translated_parts)
+        return translated_text if translated_text.strip() else text
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning("Free Arabic translation unavailable (%s); sending English original", type(exc).__name__)
         return text
