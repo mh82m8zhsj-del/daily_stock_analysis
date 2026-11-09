@@ -97,3 +97,28 @@ def test_empty_translation_still_delivers_original_report():
                 patch.object(sender, "_send_telegram_message", return_value=True) as send:
             assert sender.send_to_telegram("Hold MSFT")
         assert send.call_args.args[2] == "Hold MSFT"
+
+
+def test_malformed_translation_responses_keep_original(monkeypatch):
+    for endpoint in ("mymemory", "https://translate.example.org/translate"):
+        monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", endpoint)
+        for payload in (None, [], "invalid", {}, {"responseStatus": 200, "responseData": None},
+                        {"responseStatus": 200, "responseData": []}):
+            response = Mock()
+            response.json.return_value = payload
+            method = "get" if endpoint == "mymemory" else "post"
+            with patch(f"src.notification_sender.arabic_translation.requests.{method}", return_value=response):
+                assert translate_telegram_report("Hold MSFT") == "Hold MSFT"
+
+
+def test_malformed_service_response_reaches_sender_as_original(monkeypatch):
+    from types import SimpleNamespace
+    from src.notification_sender.telegram_sender import TelegramSender
+    monkeypatch.setenv("TELEGRAM_TRANSLATE_URL", "mymemory")
+    response = Mock()
+    response.json.return_value = {"responseStatus": 200, "responseData": None}
+    sender = TelegramSender(SimpleNamespace(telegram_bot_token="test-token", telegram_chat_id="123"))
+    with patch("src.notification_sender.arabic_translation.requests.get", return_value=response), \
+            patch.object(sender, "_send_telegram_message", return_value=True) as send:
+        assert sender.send_to_telegram("Hold MSFT")
+    assert send.call_args.args[2] == "Hold MSFT"
