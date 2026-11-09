@@ -19,7 +19,12 @@ def translate_telegram_report(text: str) -> str:
     if not endpoint:
         return text
     if endpoint == "mymemory":
-        return _translate_with_mymemory(text)
+        translated = _translate_with_mymemory(text)
+        if translated != text:
+            return translated
+        # MyMemory's free quota can be exhausted during a single detailed report.
+        # Retry with a separate no-key provider without changing analysis logic.
+        return _translate_with_google(text)
     parsed = urlparse(endpoint)
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
         logger.warning("Invalid TELEGRAM_TRANSLATE_URL; delivering original report")
@@ -96,4 +101,39 @@ def _translate_with_mymemory(text: str) -> str:
         return translated_text if translated_text.strip() else text
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning("Free Arabic translation unavailable (%s); sending English original", type(exc).__name__)
+        return text
+
+
+def _translate_with_google(text: str) -> str:
+    """Best-effort, keyless fallback if MyMemory is rate-limited or unavailable.
+
+    Google Translate's public endpoint is not a guaranteed service. If it fails,
+    return the original analysis rather than silently dropping trading alerts.
+    """
+    translated_parts = []
+    try:
+        for part in _chunks(text, max_bytes=3200):
+            if not part.strip():
+                translated_parts.append(part)
+                continue
+            response = requests.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params={"client": "gtx", "sl": "en", "tl": "ar", "dt": "t", "q": part},
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list) or not data or not isinstance(data[0], list):
+                raise ValueError("Invalid fallback translation response")
+            translated = "".join(
+                item[0] for item in data[0]
+                if isinstance(item, list) and item and isinstance(item[0], str)
+            )
+            if not translated.strip():
+                raise ValueError("Empty fallback translation")
+            translated_parts.append(translated)
+        result = "".join(translated_parts)
+        return result if result.strip() else text
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning("Telegram Arabic fallback unavailable (%s); preserving original alert", type(exc).__name__)
         return text
