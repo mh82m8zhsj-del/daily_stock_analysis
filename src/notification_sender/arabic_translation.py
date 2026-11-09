@@ -45,7 +45,7 @@ def translate_telegram_report(text: str) -> str:
 def _chunks(text: str, max_bytes: int = 450):
     """Split at whitespace, with a safe fallback for very long tokens."""
     current = ""
-    for token in re.findall(r"\\S+|\\s+", text):
+    for token in re.findall(r"\S+|\s+", text):
         if len((current + token).encode("utf-8")) <= max_bytes:
             current += token
             continue
@@ -84,7 +84,8 @@ def _translate_with_mymemory(text: str) -> str:
             if not isinstance(translated, str) or not translated.strip():
                 raise ValueError("Empty translation")
             translated_parts.append(translated)
-        return "".join(translated_parts)
+        translated_text = "".join(translated_parts)
+        return translated_text if translated_text.strip() else text
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning("Free Arabic translation unavailable (%s); sending English original", type(exc).__name__)
         return text
