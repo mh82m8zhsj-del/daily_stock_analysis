@@ -1,4 +1,4 @@
-name: Telegram read-only connection diagnosis
+name: Telegram report status verification
 
 'on':
   workflow_dispatch:
@@ -9,7 +9,7 @@ name: Telegram read-only connection diagnosis
         type: choice
         options: [full, market-only, stocks-only]
       force_run:
-        description: Compatibility input; never starts stock analysis on this branch
+        description: Send one fixed Arabic status notice; never starts stock analysis
         default: false
         type: boolean
 
@@ -30,6 +30,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_MESSAGE_THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
+          SEND_STATUS_NOTICE: ${{ github.event.inputs.force_run }}
         run: |
           python - <<'PY'
           import json
@@ -84,7 +85,24 @@ jobs:
                                 "can_post_messages": member.get("can_post_messages") if isinstance(member.get("can_post_messages"), bool) else None,
                                 "can_send_messages": member.get("can_send_messages") if isinstance(member.get("can_send_messages"), bool) else None}))
           ok = isinstance(me, dict) and isinstance(target, dict) and isinstance(member, dict)
-          print(json.dumps({"result": "read_only_probes_completed", "ok": ok,
-                            "messages_sent": 0, "stock_analysis_runs": 0}))
-          raise SystemExit(0 if ok else 1)
+          requested = os.getenv("SEND_STATUS_NOTICE", "").lower() == "true"
+          confirmed = False
+          if requested and ok:
+              notice = (
+                  "عقل الأسهم: تم دمج إصلاح تنبيهات تيليجرام وإعداد التقرير.\n"
+                  "تعذر تأكيد إرسال التقرير الكامل بسبب انتهاء مهلة الاتصال.\n"
+                  "يمكنك الاطلاع عليه من صفحة التشغيل:\n"
+                  "https://github.com/mh82m8zhsj-del/daily_stock_analysis/actions/runs/42623251401\n"
+                  "هذه رسالة حالة فنية فقط، ولم يتم تنفيذ صفقات مالية."
+              )
+              payload = {"chat_id": chat, "text": notice, "disable_web_page_preview": True}
+              thread = os.getenv("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
+              if thread:
+                  payload["message_thread_id"] = thread
+              delivered = probe("sendMessage", payload)
+              confirmed = isinstance(delivered, dict)
+          print(json.dumps({"result": "status_verification_completed", "read_probes_ok": ok,
+                            "status_attempted": requested and ok, "status_confirmed": confirmed,
+                            "stock_analysis_runs": 0, "automatic_retries": 0}))
+          raise SystemExit(0 if ok and (not requested or confirmed) else 1)
           PY
