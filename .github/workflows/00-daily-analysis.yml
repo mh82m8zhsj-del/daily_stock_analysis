@@ -1,10 +1,10 @@
 name: 每日股票分析
 
 on:
-  # US market monitoring: every 15 minutes on weekdays, 13:00–21:45 UTC
+  # US market monitoring: every 15 minutes on weekdays, offset from the top of the hour
   # Covers US regular session across daylight-saving changes; market-day guard remains enabled.
   schedule:
-    - cron: '*/15 13-21 * * 1-5'
+    - cron: '7-59/15 13-21 * * 1-5'
   
   # 手动触发
   workflow_dispatch:
@@ -574,6 +574,70 @@ jobs:
             logs/
           retention-days: 30
       
+
+
+      # Guaranteed Arabic heartbeat for every check, even when no opportunity is found.
+      # This is workflow monitoring only; it does not alter analysis or place trades.
+      - name: إرسال حالة كل فحص إلى Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_MESSAGE_THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
+          CHECK_STATUS: ${{ job.status }}
+          CHECK_EVENT: ${{ github.event_name }}
+          CHECK_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+          thread_id = os.environ.get("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
+          if not token or not chat_id:
+              raise SystemExit("Telegram credentials are missing; every-check notification was not sent")
+
+          status = os.environ.get("CHECK_STATUS", "unknown")
+          event = os.environ.get("CHECK_EVENT", "unknown")
+          status_ar = {
+              "success": "نجح",
+              "failure": "فشل",
+              "cancelled": "أُلغي",
+          }.get(status, status)
+          event_ar = {
+              "schedule": "مجدول",
+              "workflow_dispatch": "يدوي",
+          }.get(event, event)
+          now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Riyadh"))
+          message = (
+              "🧠 عقل الأسهم — تم تنفيذ الفحص\n"
+              f"الحالة: {status_ar}\n"
+              f"نوع التشغيل: {event_ar}\n"
+              f"الوقت: {now:%Y-%m-%d %H:%M} بتوقيت الرياض\n"
+              "الإشعار: تم الإرسال حتى عند عدم وجود فرصة\n"
+              f"سجل التشغيل: {os.environ.get('CHECK_RUN_URL', '')}"
+          )
+          payload = {"chat_id": chat_id, "text": message, "disable_web_page_preview": True}
+          if thread_id:
+              payload["message_thread_id"] = thread_id
+
+          request = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              result = json.loads(response.read().decode("utf-8"))
+          if not result.get("ok"):
+              raise SystemExit(f"Telegram API rejected every-check notification: {result.get('description', 'unknown error')}")
+          print("Every-check Telegram status notification sent successfully")
+          PY
+
       - name: 显示运行结果
         if: always()
         run: |
