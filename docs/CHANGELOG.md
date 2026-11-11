@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [改进] Send original English Telegram alerts in the daily workflow by disabling optional Arabic translation; preserve analysis, formatting, destinations, and schedule.
+
 - [修复] Fix free Arabic Telegram translation dropping ordinary reports due to an over-escaped chunking regex; preserve the original message if translation is empty.
 
 - [修复] 依赖锁定 `akshare<1.20.0`，避免上游目录与 HTTP 层重构导致 CI 与桌面打包失败；Python 3.10 新装限制 `litellm<1.98.0`，修复 `NotRequired` 导入错误
