@@ -9,7 +9,7 @@ name: Telegram report status verification
         type: choice
         options: [full, market-only, stocks-only]
       force_run:
-        description: Send one fixed Arabic status notice; never starts stock analysis
+        description: Send one fixed English test notice; never starts stock analysis
         default: false
         type: boolean
 
@@ -89,11 +89,10 @@ jobs:
           confirmed = False
           if requested and ok:
               notice = (
-                  "عقل الأسهم: تم دمج إصلاح تنبيهات تيليجرام وإعداد التقرير.\n"
-                  "تعذر تأكيد إرسال التقرير الكامل بسبب انتهاء مهلة الاتصال.\n"
-                  "يمكنك الاطلاع عليه من صفحة التشغيل:\n"
-                  "https://github.com/mh82m8zhsj-del/daily_stock_analysis/actions/runs/42623251401\n"
-                  "هذه رسالة حالة فنية فقط، ولم يتم تنفيذ صفقات مالية."
+                  "Aql Al Ashum: Telegram test message.\n"
+                  "Notification delivery is being checked.\n"
+                  "Stock analysis is being repaired separately.\n"
+                  "No financial trades were executed."
               )
               payload = {"chat_id": chat, "text": notice, "disable_web_page_preview": True}
               thread = os.getenv("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
