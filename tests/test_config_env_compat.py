@@ -15,6 +15,28 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         Config.reset_instance()
 
     @patch("src.config.setup_env")
+    def test_empty_workflow_gemini_fallback_disables_legacy_default(self, _mock_setup_env):
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_API_KEY": "test-gemini-key",
+                "GEMINI_MODEL": "test-primary",
+                "GEMINI_MODEL_FALLBACK": "",
+                "GEMINI_REQUEST_DELAY": "35.0",
+                "GEMINI_MAX_RETRIES": "2",
+                "GEMINI_RETRY_DELAY": "35.0",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.litellm_model, "gemini/test-primary")
+        self.assertEqual(config.litellm_fallback_models, [])
+        self.assertEqual(config.gemini_request_delay, 35.0)
+        self.assertEqual(config.gemini_max_retries, 2)
+        self.assertEqual(config.gemini_retry_delay, 35.0)
+
+    @patch("src.config.setup_env")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     @patch.object(Config, "_parse_stock_email_groups", return_value=[])
     def test_share_image_social_branding_is_optional_and_configurable(

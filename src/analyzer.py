@@ -52,6 +52,7 @@ from src.llm.hermes import (
 )
 from src.llm.generation_params import apply_litellm_generation_params
 from src.llm.errors import call_litellm_with_param_recovery
+from src.llm.rate_limit_recovery import GeminiRateLimitRecovery, llm_error_status
 from src.llm.backend_registry import (
     LOCAL_CLI_GENERATION_BACKEND_IDS,
     LITELLM_BACKEND_ID,
@@ -3642,7 +3643,7 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
         requested_timeout = generation_config.get("timeout")
 
         models_to_try = [config.litellm_model] + (config.litellm_fallback_models or [])
-        models_to_try = [m for m in models_to_try if m]
+        models_to_try = list(dict.fromkeys(m for m in models_to_try if m))
 
         use_channel_router = self._has_channel_config(config)
 
@@ -3709,6 +3710,7 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
                     (use_channel_router and self._router and model in router_model_names)
                     or (self._router and model == config.litellm_model and not use_channel_router)
                 )
+                keys = []
                 if not uses_router:
                     try:
                         keys = get_api_keys_for_model(model, config)
@@ -3742,9 +3744,15 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
 
                 _stream_text: Optional[str] = None
                 _stream_usage: Dict[str, Any] = {}
+                rate_recovery = GeminiRateLimitRecovery(
+                    enabled=bool(not uses_router and not use_channel_router
+                                 and model.startswith("gemini/") and len(keys) == 1),
+                    max_retries=getattr(config, "gemini_max_retries", 0),
+                    retry_delay=getattr(config, "gemini_retry_delay", 0),
+                )
 
                 if model_stream:
-                    try:
+                    def request_stream():
                         stream_response = call_litellm_with_param_recovery(
                             lambda kwargs: self._dispatch_litellm_completion(
                                 model,
@@ -3759,14 +3767,22 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
                             cache_recovery=False,
                             logger=logger,
                         )
-                        _stream_text, _stream_usage = self._consume_litellm_stream(
+                        return self._consume_litellm_stream(
                             stream_response,
                             model=model,
                             usage_model=usage_model,
                             provider=usage_provider,
                             progress_callback=stream_progress_callback,
                         )
+
+                    try:
+                        _stream_text, _stream_usage = rate_recovery.run(request_stream, logger=logger, model=model)
                     except _LiteLLMStreamError as exc:
+                        # Changing transport cannot repair credentials, a missing
+                        # model or an exhausted rate limit. Preserve the original
+                        # cause for bounded recovery and the next model instead.
+                        if llm_error_status(exc) in {401, 403, 404, 429}:
+                            raise
                         safe_error = self._sanitize_litellm_exception_text(exc, config=config, model=model)
                         if exc.partial_received:
                             logger.warning(
@@ -3782,6 +3798,8 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
                             )
                         last_error = RuntimeError(f"{type(exc).__name__}: {safe_error}")
                     except Exception as exc:
+                        if llm_error_status(exc) in {401, 403, 404, 429}:
+                            raise
                         safe_error = self._sanitize_litellm_exception_text(exc, config=config, model=model)
                         logger.warning(
                             "[LiteLLM] %s stream request failed before first chunk, falling back to non-stream: %s",
@@ -3802,18 +3820,22 @@ Output strictly in the following JSON format. This is a complete Decision Dashbo
                         response_validator(_stream_text)
                     return _stream_text, model, _stream_usage
 
-                response = call_litellm_with_param_recovery(
-                    lambda kwargs: self._dispatch_litellm_completion(
-                        model,
-                        kwargs,
-                        config=config,
-                        use_channel_router=use_channel_router,
-                        router_model_names=router_model_names,
+                response = rate_recovery.run(
+                    lambda: call_litellm_with_param_recovery(
+                        lambda kwargs: self._dispatch_litellm_completion(
+                            model,
+                            kwargs,
+                            config=config,
+                            use_channel_router=use_channel_router,
+                            router_model_names=router_model_names,
+                        ),
+                        model=model,
+                        call_kwargs=call_kwargs,
+                        model_list=recovery_model_list,
+                        logger=logger,
                     ),
-                    model=model,
-                    call_kwargs=call_kwargs,
-                    model_list=recovery_model_list,
                     logger=logger,
+                    model=model,
                 )
 
                 response_model, response_provider = self._resolve_response_model_provider(

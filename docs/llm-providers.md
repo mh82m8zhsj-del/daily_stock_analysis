@@ -130,7 +130,7 @@ LITELLM_FALLBACK_MODELS=openai/gpt-5.6-terra,openai/gpt-5.6-luna
 | Modelflare | [快速开始](https://docs.modelflare.dev/quickstart/)、[接入端点](https://docs.modelflare.dev/guides/endpoints/)、[模型与分组](https://docs.modelflare.dev/guides/models-and-groups/) | 使用 OpenAI-compatible Base URL `https://modelflare.dev/v1` 和标准 `LLM_MODELFLARE_*` 渠道配置；本项目默认模型为 `gpt-6.1-sol`，模型列表以账号权限与控制台为准。 |
 | OpenAI | [模型列表](https://platform.openai.com/docs/models) | 官方模型页建议从 `gpt-5.5` 开始，低延迟/低成本场景使用 `gpt-5.4-mini` 或 `gpt-5.4-nano`。 |
 | DeepSeek | [快速开始](https://api-docs.deepseek.com/) | 官方 OpenAI Base URL 为 `https://api.deepseek.com`；`deepseek-chat` / `deepseek-reasoner` 将于 2026-07-24 弃用，当前模板直接使用 `deepseek-v4-flash` / `deepseek-v4-pro`。 |
-| Gemini | [模型列表](https://ai.google.dev/gemini-api/docs/models) | Gemini 3.1 Pro / Gemini 3 Flash 仍为 preview；如需生产稳定性，可在控制台改回 2.5 稳定模型。 |
+| Gemini | [模型列表](https://ai.google.dev/gemini-api/docs/models) | Verify model access using the account's `ListModels` response and `generateContent` support. An older model can return 404 even when the key works. |
 | Anthropic Claude | [模型概览](https://docs.anthropic.com/en/docs/about-claude/models/all-models) | Claude 当前 API ID 包含 `claude-sonnet-4-6`、`claude-opus-4-7`；Sonnet 更适合作为默认性价比入口。 |
 | Kimi / Moonshot | [Kimi K2.6 快速开始](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)、[模型列表](https://platform.kimi.com/docs/models) | 官方推荐 `kimi-k2.6`；`kimi-k2` 系列将在 2026-05-25 下线，旧 `moonshot-v1-*` 仅保留为稳定旧工作负载选择。 |
 | 通义千问 / DashScope | [文本生成](https://help.aliyun.com/zh/model-studio/text-generation-model/) | 百炼推荐 `qwen3.6-plus`，确认效果后可用 `qwen3.6-flash` 降低成本。 |
@@ -181,6 +181,18 @@ LITELLM_FALLBACK_MODELS=openai/gpt-5.6-terra,openai/gpt-5.6-luna
 回滚 HMAC 遥测显式配置时，可移除 `LLM_USAGE_HMAC_SECRET` 并恢复或删除 `LLM_USAGE_HMAC_KEY_VERSION`；留空后系统会回到本地生成 `.llm_usage_hmac_secret` 的默认行为。
 
 Ollama 默认 Base URL `http://127.0.0.1:11434` 主要面向本地、Docker 或能访问该服务的 self-hosted runner。GitHub-hosted runner 通常没有本地 Ollama 服务，直接配置 `LLM_CHANNELS=ollama` 大概率会连接失败。
+
+### Gemini rate limits and unavailable fallback models
+
+The daily workflow no longer supplies an implicit older Gemini fallback. Set `GEMINI_MODEL_FALLBACK` only to a model verified for the same account; an explicitly empty value disables the legacy fallback. Explicit channel, YAML, and `LITELLM_FALLBACK_MODELS` configuration retain their existing precedence.
+
+For the default serial workflow (`MAX_WORKERS=1`), `GEMINI_REQUEST_DELAY` defaults to 35 seconds before each stock analysis. `GEMINI_MAX_RETRIES` defaults to 2 and `GEMINI_RETRY_DELAY` to 35 seconds. Set these existing configuration names in Actions Variables or Secrets to match the account's actual RPM/TPM limits. Local application defaults are unchanged. `ANALYSIS_DELAY` delays collection of completed results and does not throttle worker requests.
+
+Legacy single-key Gemini requests recover from transient 429 responses with bounded waits and retries. A recognized provider rejection (including 429, 404, or an authentication failure) does not trigger an immediate stream-to-non-stream duplicate request. Streaming compatibility fallback is retained for actual stream failures. Daily/zero quota, unavailable models, invalid credentials, and account restrictions require a provider/configuration change; retries cannot create quota or grant access. Do not replace a failed analysis with a successful entry recommendation.
+
+Recovery is capped at 5 retries, 60 seconds per wait, and 120 seconds of total waiting per distinct model. A provider `Retry-After` beyond those bounds skips local recovery instead of retrying early. Recognized structured daily/zero-quota metadata also skips retries; when the library preserves only an error string, the failure remains subject to the bounded retry policy rather than a guessed quota classification.
+
+If dispatch returns `Actions has been disabled for this repository`, the bot cannot run or send a test message. A repository administrator must enable Actions in Settings → Actions → General. A successful historical run or passing local tests does not prove that scheduling or delivery is currently active.
 
 ### Hermes 本地 HTTP generation（Phase 3）
 

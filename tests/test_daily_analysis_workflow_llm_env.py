@@ -87,6 +87,21 @@ def test_daily_analysis_accepts_modelflare_one_key_from_secrets() -> None:
     assert '[ -n "$MODELFLARE_KEY" ]' in analyze["run"]
 
 
+def test_daily_analysis_uses_only_an_explicit_gemini_fallback() -> None:
+    # The former workflow default returned 404 for the configured account.
+    # An empty value must reach Config unchanged so it disables legacy fallback.
+    assert _load_daily_analysis_env()["GEMINI_MODEL_FALLBACK"] == (
+        "${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK }}"
+    )
+
+
+def test_daily_analysis_exposes_gemini_pacing_and_retry_controls() -> None:
+    env = _load_daily_analysis_env()
+    for key in ("GEMINI_REQUEST_DELAY", "GEMINI_MAX_RETRIES", "GEMINI_RETRY_DELAY"):
+        assert f"vars.{key}" in env[key]
+        assert f"secrets.{key}" in env[key]
+
+
 def test_daily_analysis_keeps_channel_secrets_in_secrets_context() -> None:
     templates = _extract_provider_templates()
     env = _load_daily_analysis_env()

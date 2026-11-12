@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] Bound legacy Gemini rate-limit retries, avoid duplicate requests after provider-rejected streams, and stop assuming an unavailable fallback model in the daily workflow; expose existing pacing and retry settings.
+
 - [改进] Send original English Telegram alerts in the daily workflow by disabling optional Arabic translation; preserve analysis, formatting, destinations, and schedule.
 
 - [修复] Fix free Arabic Telegram translation dropping ordinary reports due to an over-escaped chunking regex; preserve the original message if translation is empty.

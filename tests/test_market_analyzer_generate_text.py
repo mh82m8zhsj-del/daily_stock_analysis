@@ -1469,6 +1469,115 @@ class TestAnalyzerGenerateText:
         assert dispatch_calls[0]["stream"] is True
         assert "stream" not in dispatch_calls[1]
 
+    @pytest.mark.parametrize("status", [401, 403, 404, 429])
+    @pytest.mark.parametrize("during_iteration", [False, True])
+    def test_stream_http_failures_use_next_model_without_nonstream_retry(self, status, during_iteration):
+        analyzer = self._make_analyzer()
+        cfg = analyzer._config_override
+        cfg.litellm_fallback_models = ["gemini/fallback"]
+        cfg.gemini_max_retries = 0
+        cfg.gemini_retry_delay = 2
+        error = RuntimeError("provider rejected request")
+        error.status_code = status
+
+        def broken_stream():
+            raise error
+            yield  # pragma: no cover
+
+        def good_stream():
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))], usage=None)
+
+        calls = []
+
+        def dispatch(model, kwargs, **_):
+            calls.append((model, kwargs.get("stream", False)))
+            if model == cfg.litellm_model:
+                if during_iteration:
+                    return broken_stream()
+                raise error
+            return good_stream()
+
+        with patch.object(analyzer, "_dispatch_litellm_completion", side_effect=dispatch), \
+                patch("src.llm.rate_limit_recovery.time.sleep") as sleep:
+            text, model, _ = analyzer._call_litellm("prompt", {"max_tokens": 128}, stream=True)
+        assert (text, model) == ("ok", "gemini/fallback")
+        assert calls == [(cfg.litellm_model, True), ("gemini/fallback", True)]
+        sleep.assert_not_called()
+
+    @pytest.mark.parametrize("partial", [False, True])
+    def test_single_key_gemini_stream_quota_has_one_shared_bounded_retry_budget(self, partial):
+        from src.analyzer import _AllModelsFailedError
+
+        analyzer = self._make_analyzer()
+        cfg = analyzer._config_override
+        cfg.gemini_max_retries = 2
+        cfg.gemini_retry_delay = 3
+        error = RuntimeError("provider rate limit")
+        error.status_code = 429
+        error.headers = {"Retry-After": "5"}
+
+        def broken_stream():
+            if partial:
+                yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="partial"))], usage=None)
+            raise error
+
+        with patch.object(analyzer, "_dispatch_litellm_completion", side_effect=lambda *a, **kw: broken_stream()) as dispatch, \
+                patch("src.llm.rate_limit_recovery.time.sleep") as sleep:
+            with pytest.raises(_AllModelsFailedError):
+                analyzer._call_litellm("prompt", {"max_tokens": 128}, stream=True)
+        assert dispatch.call_count == 3
+        assert all(call.args[1].get("stream") is True for call in dispatch.call_args_list)
+        assert [call.args[0] for call in sleep.call_args_list] == [5, 6]
+
+    def test_direct_gemini_nonstream_rate_limit_can_recover(self):
+        analyzer = self._make_analyzer()
+        cfg = analyzer._config_override
+        cfg.gemini_max_retries = 2
+        cfg.gemini_retry_delay = 3
+        error = RuntimeError("provider rate limit")
+        error.status_code = 429
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="recovered"))], usage=None)
+        with patch.object(analyzer, "_dispatch_litellm_completion", side_effect=[error, response]) as dispatch, \
+                patch("src.llm.rate_limit_recovery.time.sleep") as sleep:
+            text, _, _ = analyzer._call_litellm("prompt", {"max_tokens": 128})
+        assert text == "recovered" and dispatch.call_count == 2
+        sleep.assert_called_once_with(3)
+
+    def test_channel_router_retries_are_not_multiplied_by_stream_fallback(self):
+        from src.analyzer import _AllModelsFailedError
+
+        analyzer = self._make_analyzer()
+        cfg = analyzer._config_override
+        cfg.litellm_model = "gemini/gemini-2.0-flash"
+        cfg.llm_model_list = [{"model_name": cfg.litellm_model, "litellm_params": {"model": cfg.litellm_model}}]
+        cfg.gemini_max_retries = 5
+        cfg.gemini_retry_delay = 3
+        analyzer._router = MagicMock()
+        error = RuntimeError("router already exhausted retries")
+        error.status_code = 429
+        with patch.object(analyzer, "_dispatch_litellm_completion", side_effect=error) as dispatch, \
+                patch("src.llm.rate_limit_recovery.time.sleep") as sleep:
+            with pytest.raises(_AllModelsFailedError):
+                analyzer._call_litellm("prompt", {"max_tokens": 128}, stream=True)
+        dispatch.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_duplicate_fallback_model_cannot_reset_the_rate_limit_budget(self):
+        from src.analyzer import _AllModelsFailedError
+
+        analyzer = self._make_analyzer()
+        cfg = analyzer._config_override
+        cfg.litellm_fallback_models = [cfg.litellm_model] * 3
+        cfg.gemini_max_retries = 2
+        cfg.gemini_retry_delay = 3
+        error = RuntimeError("provider rate limit")
+        error.status_code = 429
+        with patch.object(analyzer, "_dispatch_litellm_completion", side_effect=error) as dispatch, \
+                patch("src.llm.rate_limit_recovery.time.sleep") as sleep:
+            with pytest.raises(_AllModelsFailedError):
+                analyzer._call_litellm("prompt", {"max_tokens": 128}, stream=True)
+        assert dispatch.call_count == 3 and sleep.call_count == 2
+
     def test_call_litellm_hermes_route_forces_non_stream_direct_client(self):
         analyzer = self._make_analyzer()
         analyzer._config_override = SimpleNamespace(
